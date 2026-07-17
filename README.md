@@ -27,6 +27,9 @@ network — no cloud, no subscription, and **no dependency on Home Assistant** o
 
 ## Why a restreamer? (read this first)
 
+Most consumer TV's cannot play RTSP streams, that is why ubiquiti (unifi) sells their rediculously
+overpriced HDMI tv adapter.  This eleminates the need to spend additional money for another Unifi
+product.  You do NOT need to spend more money if you already have a device to run the restreamer.
 Samsung consumer TVs **cannot play RTSP** — their video player (AVPlay) only speaks HLS/DASH/MP4.
 And the TV has **one hardware decoder**, so it can't decode several camera streams at once. This
 project solves both with a tiny **restreamer** on a machine you already leave on: `ffmpeg` pulls

@@ -5,6 +5,9 @@
 
   "_grid_note": "cols x rows = how many cells. Cameras below fill them left-to-right, top-to-bottom. Fewer cameras than cells = the extra cells are black. 1 camera + 1x1 grid = single fullscreen. Examples: 2x2 (4 cams), 3x2 (6), 3x3 (9), 2x1 (2 side by side).",
 
+  "go2rtc": "",
+  "_go2rtc_note": "Path to a go2rtc binary for resilient auto-reconnecting camera connections. Leave \"\" to auto-find one next to camtv.py or on PATH (install-macos.sh / install-windows.ps1 download it for you). If none is found, cameras are pulled directly (a dropped camera freezes its tile until restart).",
+
   "encoder": "auto",
   "_encoder_note": "'auto' picks hardware encoding per-OS (h264_videotoolbox on macOS, else libx264). Override with a specific ffmpeg encoder name if you know what you want.",
 

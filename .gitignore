@@ -27,3 +27,8 @@ restreamer/logs/
 
 # os
 .DS_Store
+
+# go2rtc — generated config (holds camera URLs) + downloaded binary
+restreamer/go2rtc.yaml
+restreamer/go2rtc
+restreamer/go2rtc.exe

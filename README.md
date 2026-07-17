@@ -8,16 +8,18 @@ network — no cloud, no subscription, and **no dependency on Home Assistant** o
 - **Arrow keys** move a highlight; **OK** blows a camera up to fullscreen; **Left/Right** cycle; **Back** returns to the grid
 - Pick **which** cameras, **how many**, and their **order** by editing one config file
 - Works with any camera that exposes **RTSP**
+- **Resilient**: go2rtc auto-reconnects dropped cameras, so a reboot/blip never freezes a tile
 
 ```
   UniFi Protect / any RTSP camera
             │  rtsp://…
             ▼
-  ┌───────────────────────────────┐   an always-on box you own
-  │  restreamer  (this repo)      │   (Mac mini, a Linux PC, a Raspberry Pi…)
-  │   ffmpeg → mosaic + per-cam   │
-  │   HLS on http://HOST:8099     │
-  └───────────────────────────────┘
+  ┌───────────────────────────────────┐   an always-on box you own
+  │  restreamer  (this repo)          │   (Windows, Mac, Linux, a Raspberry Pi…)
+  │   go2rtc (auto-reconnect cameras) │
+  │     → ffmpeg → mosaic + per-cam   │
+  │     → HLS on http://HOST:8099     │
+  └───────────────────────────────────┘
             │  HLS (http)
             ▼
      Samsung Tizen TV  ── the app (this repo)
@@ -79,7 +81,7 @@ Then install the services:
 
 **macOS**
 ```bash
-./install-macos.sh          # starts now + at every boot; auto-restarts on failure
+./install-macos.sh          # downloads go2rtc, starts now + at boot, auto-restarts on failure
 ```
 The mosaic runs as a **root LaunchDaemon** — a per-user service gets blocked by macOS "Local
 Network Privacy" from reaching your cameras. On first run macOS may pop a **"allow local network"**

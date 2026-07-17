@@ -32,6 +32,20 @@ if (-not (Test-Path (Join-Path $Here "config.json"))) {
 }
 New-Item -ItemType Directory -Force -Path (Join-Path $Here "hls"), (Join-Path $Here "logs") | Out-Null
 
+# fetch go2rtc.exe (resilient camera connections) unless already present
+$g2 = Join-Path $Here "go2rtc.exe"
+if (-not (Test-Path $g2)) {
+  try {
+    $rel = Invoke-RestMethod "https://api.github.com/repos/AlexxIT/go2rtc/releases/latest"
+    $url = ($rel.assets | Where-Object { $_.name -like "*win64.zip" } | Select-Object -First 1).browser_download_url
+    $zip = Join-Path $env:TEMP "go2rtc.zip"
+    Invoke-WebRequest $url -OutFile $zip
+    Expand-Archive $zip -DestinationPath $Here -Force
+    Get-ChildItem $Here -Filter "go2rtc_win*.exe" | Select-Object -First 1 | Move-Item -Destination $g2 -Force
+    Write-Host "Downloaded go2rtc.exe"
+  } catch { Write-Warning "Could not download go2rtc; cameras will be pulled directly. $_" }
+}
+
 foreach ($n in $tasks.Keys) {
   $script = $tasks[$n]
   $action  = New-ScheduledTaskAction -Execute $Python -Argument "`"$script`"" -WorkingDirectory $Here

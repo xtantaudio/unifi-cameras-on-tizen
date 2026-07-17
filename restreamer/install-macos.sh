@@ -26,6 +26,17 @@ fi
 
 [ -f "$HERE/config.json" ] || { echo "Create $HERE/config.json first (copy config.example.json)."; exit 1; }
 
+# fetch go2rtc (resilient camera connections). Skip with SKIP_GO2RTC=1 to pull cameras directly.
+if [ ! -x "$HERE/go2rtc" ] && [ "${SKIP_GO2RTC:-0}" != "1" ]; then
+  ARCH="$(uname -m)"; [ "$ARCH" = "x86_64" ] && A=amd64 || A=arm64
+  URL="$(curl -s https://api.github.com/repos/AlexxIT/go2rtc/releases/latest \
+        | grep -oE '"browser_download_url":\s*"[^"]*mac_'"$A"'[^"]*"' | head -1 | cut -d'"' -f4)"
+  echo "Downloading go2rtc ($A)…"
+  curl -sL "$URL" -o /tmp/go2rtc.zip && unzip -o -j /tmp/go2rtc.zip -d "$HERE" >/dev/null 2>&1
+  mv -f "$HERE"/go2rtc_mac_* "$HERE/go2rtc" 2>/dev/null || true
+  chmod +x "$HERE/go2rtc" 2>/dev/null || true
+fi
+
 # --- mosaic: root LaunchDaemon ---
 sudo tee "$DAEMON" >/dev/null <<PL
 <?xml version="1.0" encoding="UTF-8"?>

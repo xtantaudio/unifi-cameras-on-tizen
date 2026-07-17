@@ -44,3 +44,16 @@ via Samsung's cert API:
    Tizen SDK plugin jar, POSTs CSRs to `https://svdca.samsungqbe.com/apis/v3/{authors,distributors}`
    (`platform=VD`), builds the `.p12`s (OpenSSL 3 `-legacy`), registers a signing profile, and
    signs+installs. Certs are DUID-locked and expire in ~30–90 days.
+
+## Resilience: go2rtc + supervisor
+ffmpeg does **not** reconnect a dropped RTSP input — if a camera blips, that input hits EOF and
+the mosaic tile freezes until the process restarts. To fix this, `camtv.py` runs **go2rtc** in
+front: go2rtc holds each camera's RTSP connection and auto-reconnects on drops, and ffmpeg reads
+`rtsp://127.0.0.1:8554/camN` from go2rtc locally — so a camera reboot never reaches ffmpeg.
+
+`camtv.py` is a small supervisor: it generates `go2rtc.yaml` from `config.json`, starts go2rtc,
+waits for it, then starts ffmpeg. **If either child exits, the supervisor exits** so the service
+manager (launchd/systemd/Task Scheduler) restarts the whole chain cleanly — which also covers the
+rare case of go2rtc itself restarting. If no go2rtc binary is found, it falls back to pulling the
+cameras directly (works, but without the auto-reconnect resilience). The installers download the
+right go2rtc binary automatically.

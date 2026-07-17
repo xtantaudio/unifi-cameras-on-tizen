@@ -22,9 +22,12 @@ cd "$REPO/app"
 rm -f *.wgt
 
 # The Tizen CLI prompts for the profile password on stdin; drive it with expect.
-expect - "$PROFILE" "$CERT_PW" << 'EXP'
-set profile [lindex $argv 0]
-set pw [lindex $argv 1]
+# Pass profile/password via env (mixing argv with a stdin heredoc makes expect treat
+# the first arg as a script filename).
+export CAMTV_PROFILE="$PROFILE" CAMTV_PW="$CERT_PW"
+expect << 'EXP'
+set profile $env(CAMTV_PROFILE)
+set pw $env(CAMTV_PW)
 set timeout 90
 spawn tizen package -t wgt -s $profile -- .
 expect {
@@ -38,11 +41,12 @@ expect {
 expect eof
 EXP
 
-WGT="$(ls -t "$REPO"/app/*.wgt | head -1)"
+WGT_ORIG="$(ls -t "$REPO"/app/*.wgt | head -1)"
+WGT="$REPO/app/app.wgt"
+mv -f "$WGT_ORIG" "$WGT"   # tizen names the .wgt after the app name; a space breaks install
 echo "== Installing $(basename "$WGT") to $TV_IP =="
 sdb connect "$TV_IP:26101" >/dev/null 2>&1 || true
 tizen uninstall -p "$APPID" -t "$TV_IP:26101" >/dev/null 2>&1 || true
-tizen install -n "$(basename "$WGT")" -- "$REPO/app" 2>&1 | tail -4 || \
-  tizen install -n "$WGT" 2>&1 | tail -4
+tizen install -n "$(basename "$WGT")" -- "$REPO/app" 2>&1 | tail -6
 tizen run -p "$APPID" 2>&1 | tail -1 || true
 echo "== Done. If the TV rejects it: certificate expired or Developer Mode / Host PC IP not set. =="

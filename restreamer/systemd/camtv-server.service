@@ -1,0 +1,12 @@
+[Unit]
+Description=UniFi cameras HLS static server
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/unifi-cameras-on-tizen/restreamer
+ExecStart=/usr/bin/python3 /opt/unifi-cameras-on-tizen/restreamer/serve.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

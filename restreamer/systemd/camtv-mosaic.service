@@ -1,0 +1,14 @@
+[Unit]
+Description=UniFi cameras -> HLS mosaic (ffmpeg)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Edit WorkingDirectory/ExecStart to your checkout path.
+WorkingDirectory=/opt/unifi-cameras-on-tizen/restreamer
+ExecStart=/usr/bin/python3 /opt/unifi-cameras-on-tizen/restreamer/camtv.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

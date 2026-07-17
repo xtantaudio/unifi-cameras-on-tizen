@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy this to config.json and edit. This is the ONLY file you change to pick cameras, count, order, and layout.",
+
+  "grid": { "cols": 2, "rows": 2 },
+
+  "_grid_note": "cols x rows = how many cells. Cameras below fill them left-to-right, top-to-bottom. Fewer cameras than cells = the extra cells are black. 1 camera + 1x1 grid = single fullscreen. Examples: 2x2 (4 cams), 3x2 (6), 3x3 (9), 2x1 (2 side by side).",
+
+  "encoder": "auto",
+  "_encoder_note": "'auto' picks hardware encoding per-OS (h264_videotoolbox on macOS, else libx264). Override with a specific ffmpeg encoder name if you know what you want.",
+
+  "mosaic_bitrate": "6M",
+
+  "cameras": [
+    { "name": "Front Door", "url": "rtsp://USER:PASS@CAMERA_HOST:PORT/STREAM1" },
+    { "name": "Backyard",   "url": "rtsp://USER:PASS@CAMERA_HOST:PORT/STREAM2" },
+    { "name": "Garage",     "url": "rtsp://USER:PASS@CAMERA_HOST:PORT/STREAM3" },
+    { "name": "Driveway",   "url": "rtsp://USER:PASS@CAMERA_HOST:PORT/STREAM4" }
+  ],
+
+  "_cameras_note": "Add/remove entries to change the count. Reorder them to change grid position. 'url' is your camera's RTSP URL. For UniFi Protect: enable RTSP on the camera in Protect, then the URL is rtsp://NVR_IP:7447/<alias>. Some cameras embed credentials in the URL."
+}

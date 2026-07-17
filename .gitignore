@@ -1,0 +1,29 @@
+# secrets & certs — NEVER commit
+tools/certs/
+tools/token.json
+**/*.p12
+**/*.key.pem
+**/*.csr
+**/*.crt
+**/*.cer
+**/token.json
+
+# user config (contains camera URLs, possibly credentials)
+restreamer/config.json
+
+# app runtime config (your host) — keep the template, ignore the edited copy
+# (config.js ships with a CHANGE_ME placeholder; commit that, not your edited host if private)
+
+# build artifacts
+app/*.wgt
+app/.buildResult/
+app/.manifest.tmp
+app/author-signature.xml
+app/signature1.xml
+
+# restreamer runtime
+restreamer/hls/
+restreamer/logs/
+
+# os
+.DS_Store

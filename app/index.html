@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>UniFi Cameras</title>
+<style>
+  html,body{margin:0;padding:0;width:1920px;height:1080px;background:#000;overflow:hidden;font-family:sans-serif;}
+  #av{position:absolute;left:0;top:0;width:1920px;height:1080px;}
+  #hl{position:absolute;box-sizing:border-box;border:6px solid #2d9cff;border-radius:6px;
+      box-shadow:0 0 24px rgba(45,156,255,.8);display:none;pointer-events:none;transition:left .12s,top .12s;}
+  #label{position:absolute;left:40px;top:32px;color:#fff;background:rgba(0,0,0,.55);
+         padding:10px 22px;font-size:34px;border-radius:8px;display:none;z-index:20;}
+  #msg{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-size:32px;
+       background:rgba(0,0,0,.6);padding:12px 26px;border-radius:8px;display:none;z-index:20;text-align:center;}
+  #hint{position:absolute;right:36px;bottom:28px;color:rgba(255,255,255,.75);font-size:22px;
+        background:rgba(0,0,0,.45);padding:8px 16px;border-radius:8px;z-index:20;}
+</style>
+</head>
+<body>
+  <object id="av" type="application/avplayer"></object>
+  <div id="hl"></div>
+  <div id="label"></div>
+  <div id="msg"></div>
+  <div id="hint">Arrows: select &nbsp;•&nbsp; OK: fullscreen &nbsp;•&nbsp; Back: grid</div>
+  <script src="js/config.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

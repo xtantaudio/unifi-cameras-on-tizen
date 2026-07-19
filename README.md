@@ -199,9 +199,18 @@ written a new HLS segment for `STALE_SECS` (default 60), it restarts the mosaic 
 
 The fourth row matters just as much. Restarting the stream doesn't help if the TV has already
 given up on it — the old behavior was to show "Stream error" and stay dead. The app now retries
-the same URL up to 10 times, 5s apart, showing "Reconnecting…" instead, which comfortably
-outlasts a restart. It also runs a 15s buffering watchdog, because AVPlay's `onerror` doesn't
-reliably fire on a dead stream — it often just hangs in "buffering" forever.
+the same URL **indefinitely**, showing "Reconnecting…" instead, with backoff — 2s, 3s, 5s, 5s,
+10s, 15s, then every 30s. It also runs a 15s buffering watchdog, because AVPlay's `onerror`
+doesn't reliably fire on a dead stream — it often just hangs in "buffering" forever.
+
+It never gives up, and that's deliberate. An earlier version stopped after 10 attempts, which
+tested fine against quick restarts and then failed for real: a 45s outage plus ffmpeg's startup
+put the stream back just after the budget expired, leaving "Stream error" on screen while a
+healthy stream was being served. Worse, the app was still *running*, so relaunching it did
+nothing — the runtime just foregrounds a live app without re-running its JS, and only a
+reinstall recovered it. Any finite ceiling has that failure mode; it merely changes which outage
+length triggers it. Nobody is standing at a wall display to press a button, so late recovery
+beats no recovery.
 
 Tuning (environment variables on the watchdog service):
 
@@ -225,8 +234,10 @@ Relaunch the app and it picks up the new camera set automatically.
 
 - **App installs but the grid is black / "Stream error":** the app can't reach the restreamer.
   Check `http://<HOST>:8099/config.json` loads from another device, and that `js/config.js` host is right.
-  Note the app now shows **"Reconnecting… (n/10)"** first and only falls back to "Stream error"
-  after ~50s of failed attempts — so a brief message during a restreamer restart is expected, not a fault.
+  Note the app shows **"Reconnecting…"** while a stream is unavailable and keeps retrying forever
+  (after ~6 attempts it adds "check the restreamer"), so a brief message during a restreamer
+  restart is expected, not a fault. It recovers on its own within ~30s of the stream returning —
+  if it doesn't, the stream genuinely isn't being served.
 - **The picture froze and nothing recovered it:** check `restreamer/logs/watchdog.log`. No
   `STALE` lines means the watchdog isn't running (`launchctl list | grep unifi-cameras` /
   `systemctl status camtv-watchdog`); `ERROR: kickstart failed` means it's running but can't

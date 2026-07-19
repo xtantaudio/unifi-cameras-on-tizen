@@ -29,12 +29,27 @@ function showMsg(t){ msg.textContent = t; msg.style.display = t ? "block" : "non
  * naive handling (show "Stream error" and stop) leaves the TV dead until someone
  * relaunches the app by hand, which defeats the point of a wall display.
  *
- * So on failure we quietly reopen the SAME url up to MAX_RETRIES times, showing
- * "Reconnecting…" rather than an error. A restreamer restart typically completes
- * well inside that budget.
+ * So on failure we quietly reopen the SAME url, showing "Reconnecting…" rather than
+ * an error.
+ *
+ * WE RETRY FOREVER, DELIBERATELY. An earlier version gave up after 10 attempts at 5s
+ * = a 50 second budget, which measured well against a quick service restart and then
+ * failed in the field: a 45s outage plus ~10s of ffmpeg startup put the stream back
+ * at ~T+55, just after the retries ran out. The display showed "Stream error" and sat
+ * dead indefinitely while a perfectly healthy stream was being served — and because
+ * the app was still running, even relaunching it did nothing (the runtime just
+ * foregrounds a live app without re-running its JS). Only a reinstall recovered it.
+ *
+ * Any finite ceiling has this failure mode; it only moves the outage length that
+ * breaks it. A wall display has nobody standing by to press a button, so giving up
+ * is never the right answer — a display that recovers late still recovers, while one
+ * that stops trying is broken until a human intervenes. Hence backoff (fast for the
+ * common quick restart, easing off so we don't hammer a host that's genuinely down)
+ * with no upper bound.
  *
  *   curUrl     : source currently playing, so a retry knows what to replay
- *   retryCount : attempts used for THIS outage; reset to 0 on any success
+ *   retryCount : attempts made during THIS outage; reset to 0 on any success. It only
+ *                selects the backoff delay and drives the message — it never stops us.
  *   bufferTimer: AVPlay's onerror does NOT always fire — a dead stream often just
  *                hangs in "buffering" forever. This catches that case.
  *   playToken  : bumped on every new play(). Any timer or callback carrying an old
@@ -42,9 +57,11 @@ function showMsg(t){ msg.textContent = t; msg.style.display = t ? "block" : "non
  *                retries from the previous source (the TV has one decoder — a stale
  *                retry firing against a torn-down player is a hard failure).
  */
-var MAX_RETRIES = 10;
-var RETRY_DELAY = 5000;     // ms between reconnect attempts
-var BUFFER_TIMEOUT = 15000; // buffering-start with no complete => treat as an error
+/* Backoff schedule in ms; the final value repeats forever. Quick at first so an
+ * ordinary restreamer restart is nearly invisible, then easing to every 30s. */
+var RETRY_BACKOFF_MS = [2000, 3000, 5000, 5000, 10000, 15000, 30000];
+var HINT_AFTER_ATTEMPTS = 6; // when to start naming the likely cause on screen
+var BUFFER_TIMEOUT = 15000;  // buffering-start with no complete => treat as an error
 
 var curUrl = null;
 var retryCount = 0;
@@ -78,20 +95,27 @@ function armBufferWatchdog(token) {
   }, BUFFER_TIMEOUT);
 }
 
-/* Single failure path for both onerror and the buffering-hang watchdog. */
+/* Single failure path for both onerror and the buffering-hang watchdog.
+ * There is no give-up branch here on purpose — see the note above. */
 function handleStreamFailure(token) {
   if (token !== playToken) return;        // stale event from a previous source
   clearRetryTimers();
-  if (retryCount >= MAX_RETRIES) {
-    showMsg("Stream error — is the restreamer running?");
-    return;
-  }
   retryCount++;
-  showMsg("Reconnecting… (" + retryCount + "/" + MAX_RETRIES + ")");
+
+  var delay = RETRY_BACKOFF_MS[Math.min(retryCount - 1, RETRY_BACKOFF_MS.length - 1)];
+
+  // Early on, stay quiet and reassuring — most outages are a service restart and end
+  // within seconds. Once it's clearly not that, name the likely cause, but keep going.
+  if (retryCount < HINT_AFTER_ATTEMPTS) {
+    showMsg("Reconnecting…");
+  } else {
+    showMsg("Reconnecting… (attempt " + retryCount + ") — check the restreamer");
+  }
+
   retryTimer = setTimeout(function () {
     if (token !== playToken) return;      // superseded while waiting
     if (curUrl) openStream(curUrl, playToken);
-  }, RETRY_DELAY);
+  }, delay);
 }
 
 function closePlayer() {

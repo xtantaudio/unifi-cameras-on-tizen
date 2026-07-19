@@ -84,11 +84,23 @@ A restarted stream is worthless if the TV has given up on it. AVPlay's default b
 dead stream is to fire `onerror` once — or, frequently, to hang in "buffering" forever without
 firing anything at all — and the naive handling leaves a permanent error on screen.
 
-So `app/js/main.js` reconnects: up to 10 attempts, 5s apart, showing "Reconnecting…" rather than
-an error, which comfortably outlasts a restreamer restart. A 15s buffering watchdog covers the
+So `app/js/main.js` reconnects **indefinitely**, with backoff (2s, 3s, 5s, 5s, 10s, 15s, then
+every 30s), showing "Reconnecting…" rather than an error. A 15s buffering watchdog covers the
 case where `onerror` never fires. A monotonic `playToken` invalidates callbacks from superseded
 sources, which matters because the TV has one decoder — a stale retry firing against a
 torn-down player is a hard failure, not a cosmetic one.
+
+The absence of a retry limit is the important part, and it was learned the hard way. The first
+version stopped after 10 attempts at 5s — a 50 second budget that looked generous against a ~10s
+service restart. In the field, a 45s outage plus ffmpeg's own startup delay put the stream back
+at roughly T+55, seconds after the retries expired, producing the exact failure this design
+exists to prevent: a dead display in front of a healthy stream. A Tizen detail made it worse —
+the app was still running, so `tizen run` merely foregrounded it without re-running its JS, and
+nothing short of a reinstall recovered it.
+
+The lesson generalizes: any finite ceiling just selects which outage length strands the display.
+Backoff addresses the real concern (not hammering a host that is genuinely down) without ever
+surrendering. Late recovery is a nuisance; no recovery needs a human.
 
 Server-side restart and client-side reconnect are both required. Either alone leaves you
 half-fixed: a stream nobody reconnects to, or a TV retrying against a server that never recovers.

@@ -19,6 +19,21 @@ export PATH="$TIZEN_HOME/tools/ide/bin:$TIZEN_HOME/tools:$PATH"
 command -v expect >/dev/null || { echo "'expect' is required (brew install expect / apt install expect)."; exit 1; }
 
 cd "$REPO/app"
+
+# config.js is gitignored (it holds YOUR host), so a fresh clone won't have it. Fail here
+# with instructions rather than packaging an app that installs fine and then sits on
+# "Set your restreamer host…" with no clue why.
+if [ ! -f js/config.js ]; then
+  echo "ERROR: app/js/config.js is missing (it's gitignored — every clone must create it)."
+  echo "  cp app/js/config.example.js app/js/config.js"
+  echo "  then edit it and set host to your restreamer, e.g. http://192.168.1.50:8099"
+  exit 1
+fi
+if grep -q 'CHANGE_ME' js/config.js; then
+  echo "ERROR: app/js/config.js still contains CHANGE_ME — set it to your restreamer's host first."
+  exit 1
+fi
+
 rm -f *.wgt
 
 # The Tizen CLI prompts for the profile password on stdin; drive it with expect.

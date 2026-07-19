@@ -11,8 +11,11 @@ tools/token.json
 # user config (contains camera URLs, possibly credentials)
 restreamer/config.json
 
-# app runtime config (your host) — keep the template, ignore the edited copy
-# (config.js ships with a CHANGE_ME placeholder; commit that, not your edited host if private)
+# app runtime config (your restreamer's host/IP) — same pattern as restreamer/config.json:
+# the template is committed, your edited copy never is. Previously config.js itself was
+# tracked, which meant setting your real host dirtied the tree and could be committed by
+# accident; ignoring it makes that impossible rather than merely discouraged.
+app/js/config.js
 
 # build artifacts
 app/*.wgt

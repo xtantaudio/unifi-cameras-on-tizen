@@ -119,9 +119,13 @@ http://<HOST-IP>:8099/config.json           ← the camera manifest the app read
 
 ```bash
 cd unifi-cameras-on-tizen/app
+cp js/config.example.js js/config.js
 # edit js/config.js — set host to your restreamer:
 #   window.CAMTV = { host: "http://<HOST-IP>:8099" };
 ```
+
+`config.js` is **gitignored**, so your host never ends up in the repo — same pattern as the
+restreamer's `config.json`. The build refuses to run if it's missing or still says `CHANGE_ME`.
 
 That's the **only** app edit. Camera names, count, and grid layout are fetched from the restreamer
 at runtime, so after this you change cameras by editing the restreamer's `config.json` — no app

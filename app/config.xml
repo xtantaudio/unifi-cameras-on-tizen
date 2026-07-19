@@ -2,6 +2,14 @@
 <widget xmlns="http://www.w3.org/ns/widgets" xmlns:tizen="http://tizen.org/ns/widgets" id="http://unifi-cameras-on-tizen/CameraGrid" version="1.0.0" viewmodes="maximized">
     <tizen:application id="camgrid001.CameraGrid" package="camgrid001" required_version="6.0"/>
     <content src="index.html"/>
+    <!-- REQUIRED for the runtime camera manifest. The app XHRs <host>/config.json to learn
+         camera names/count/grid, and the W3C widget policy blocks web requests to any origin
+         not listed here — silently, before a TCP connection is even attempted. Without this
+         the app installs and launches fine, then reports "No cameras from …/config.json".
+         Note the `internet` privilege alone is NOT enough, and AVPlay is unaffected (it is
+         native, not web), so video plays while every XHR fails — which makes this look like
+         a server problem rather than an app manifest one. -->
+    <access origin="*" subdomains="true"/>
     <feature name="http://tizen.org/feature/screen.size.normal.1080.1920"/>
     <icon src="icon.png"/>
     <name>UniFi Cameras</name>

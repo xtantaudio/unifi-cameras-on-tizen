@@ -57,3 +57,38 @@ manager (launchd/systemd/Task Scheduler) restarts the whole chain cleanly — wh
 rare case of go2rtc itself restarting. If no go2rtc binary is found, it falls back to pulling the
 cameras directly (works, but without the auto-reconnect resilience). The installers download the
 right go2rtc binary automatically.
+
+### The gap that supervision can't close: a hung ffmpeg
+
+Everything above keys off a process **exiting**. `KeepAlive` / `Restart=always` fire on exit;
+`camtv.py` exits so the manager can restart the chain. None of it detects ffmpeg going catatonic
+while still running — no output, but the process is alive, so the service looks healthy and
+nothing restarts. In practice this is the failure that actually strands a wall display: the
+picture is frozen, every dashboard says the service is up, and it stays that way until a person
+notices and intervenes.
+
+Process state is therefore the wrong signal. The only trustworthy liveness indicator is whether
+**bytes are still being produced**, so `watchdog.sh` watches the output: every `CHECK_INTERVAL`
+it finds the newest `.ts` segment for each stream under `hls/`, and if any is older than
+`STALE_SECS` it restarts the mosaic service. It enumerates whatever stream directories exist
+rather than assuming a camera count, so it follows `config.json` automatically.
+
+It restarts via the **service manager** (`launchctl kickstart -k` / `systemctl restart`) rather
+than killing a PID it found itself. That targets the right process without racing `KeepAlive`
+for the restart, and keeps the manager's supervision intact. On macOS the mosaic is a
+system-domain daemon, so the watchdog must be a root LaunchDaemon to act on it.
+
+### The other half: the TV has to come back too
+
+A restarted stream is worthless if the TV has given up on it. AVPlay's default behavior on a
+dead stream is to fire `onerror` once — or, frequently, to hang in "buffering" forever without
+firing anything at all — and the naive handling leaves a permanent error on screen.
+
+So `app/js/main.js` reconnects: up to 10 attempts, 5s apart, showing "Reconnecting…" rather than
+an error, which comfortably outlasts a restreamer restart. A 15s buffering watchdog covers the
+case where `onerror` never fires. A monotonic `playToken` invalidates callbacks from superseded
+sources, which matters because the TV has one decoder — a stale retry firing against a
+torn-down player is a hard failure, not a cosmetic one.
+
+Server-side restart and client-side reconnect are both required. Either alone leaves you
+half-fixed: a stream nobody reconnects to, or a TV retrying against a server that never recovers.

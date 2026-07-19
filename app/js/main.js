@@ -11,6 +11,9 @@
  *
  * The TV has ONE hardware decoder, so every source switch fully tears down and rebuilds
  * AVPlay, and we release it on hide/close (else the next open() fails: InvalidAccessError).
+ *
+ * AUTO-RECOVERY: if the restreamer's ffmpeg restarts (or a stream stalls), the app
+ * transparently reconnects instead of freezing on an error. See the retry block below.
  */
 var HOST = (window.CAMTV && window.CAMTV.host) || "";
 var cams = [];            // [{name, stream}]
@@ -20,7 +23,79 @@ var hl, label, msg;
 
 function showMsg(t){ msg.textContent = t; msg.style.display = t ? "block" : "none"; }
 
+/* ---- auto-recovery ------------------------------------------------------
+ * The restreamer's ffmpeg can go away underneath us — it restarts on a camera
+ * change, gets kicked by the watchdog when it stalls, or the host reboots. The
+ * naive handling (show "Stream error" and stop) leaves the TV dead until someone
+ * relaunches the app by hand, which defeats the point of a wall display.
+ *
+ * So on failure we quietly reopen the SAME url up to MAX_RETRIES times, showing
+ * "Reconnecting…" rather than an error. A restreamer restart typically completes
+ * well inside that budget.
+ *
+ *   curUrl     : source currently playing, so a retry knows what to replay
+ *   retryCount : attempts used for THIS outage; reset to 0 on any success
+ *   bufferTimer: AVPlay's onerror does NOT always fire — a dead stream often just
+ *                hangs in "buffering" forever. This catches that case.
+ *   playToken  : bumped on every new play(). Any timer or callback carrying an old
+ *                token is ignored, so switching cameras cleanly supersedes in-flight
+ *                retries from the previous source (the TV has one decoder — a stale
+ *                retry firing against a torn-down player is a hard failure).
+ */
+var MAX_RETRIES = 10;
+var RETRY_DELAY = 5000;     // ms between reconnect attempts
+var BUFFER_TIMEOUT = 15000; // buffering-start with no complete => treat as an error
+
+var curUrl = null;
+var retryCount = 0;
+var retryTimer = null;
+var bufferTimer = null;
+var playToken = 0;
+
+function clearBufferWatchdog() {
+  if (bufferTimer) { clearTimeout(bufferTimer); bufferTimer = null; }
+}
+
+function clearRetryTimers() {
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+  clearBufferWatchdog();
+}
+
+/* Cancel pending recovery and invalidate outstanding callbacks. Call before any
+ * teardown (close/hide/exit) so a stale retry can't fire against a dead player. */
+function resetRetryState() {
+  clearRetryTimers();
+  retryCount = 0;
+  curUrl = null;
+  playToken++;
+}
+
+function armBufferWatchdog(token) {
+  clearBufferWatchdog();
+  bufferTimer = setTimeout(function () {
+    if (token !== playToken) return;      // superseded by a newer play()
+    handleStreamFailure(token);           // buffering never completed => hung
+  }, BUFFER_TIMEOUT);
+}
+
+/* Single failure path for both onerror and the buffering-hang watchdog. */
+function handleStreamFailure(token) {
+  if (token !== playToken) return;        // stale event from a previous source
+  clearRetryTimers();
+  if (retryCount >= MAX_RETRIES) {
+    showMsg("Stream error — is the restreamer running?");
+    return;
+  }
+  retryCount++;
+  showMsg("Reconnecting… (" + retryCount + "/" + MAX_RETRIES + ")");
+  retryTimer = setTimeout(function () {
+    if (token !== playToken) return;      // superseded while waiting
+    if (curUrl) openStream(curUrl, playToken);
+  }, RETRY_DELAY);
+}
+
 function closePlayer() {
+  clearRetryTimers();
   try {
     var st = webapis.avplay.getState();
     if (st !== "NONE" && st !== "IDLE") webapis.avplay.stop();
@@ -28,23 +103,55 @@ function closePlayer() {
   } catch (e) {}
 }
 
+/* Start a brand-new source. Resets the outage counter so each source gets a full
+ * retry budget. */
 function play(url) {
-  showMsg("Loading…");
-  closePlayer();
+  resetRetryState();
+  curUrl = url;
+  openStream(url, playToken);
+}
+
+/* Open/prepare/play. Used by both play() (new source) and the retry path (same
+ * source), so it must NOT touch retryCount or playToken. */
+function openStream(url, token) {
+  if (retryCount === 0) showMsg("Loading…");
+  // Tear the decoder down but keep retry timers/token intact.
+  try {
+    var st = webapis.avplay.getState();
+    if (st !== "NONE" && st !== "IDLE") webapis.avplay.stop();
+    webapis.avplay.close();
+  } catch (e) {}
   var av = webapis.avplay;
   try {
     av.open(url);
     av.setDisplayRect(0, 0, 1920, 1080);
     try { av.setDisplayMethod("PLAYER_DISPLAY_MODE_FULL_SCREEN"); } catch (e) {}
     av.setListener({
-      onbufferingcomplete: function(){ showMsg(""); },
-      onerror: function(){ showMsg("Stream error"); }
+      onbufferingstart: function(){
+        if (token !== playToken) return;
+        armBufferWatchdog(token);
+      },
+      onbufferingcomplete: function(){
+        if (token !== playToken) return;
+        clearBufferWatchdog();
+        retryCount = 0;                   // buffering succeeded => outage over
+        showMsg("");
+      },
+      onerror: function(){ handleStreamFailure(token); }
     });
     av.prepareAsync(
-      function(){ try { av.play(); } catch(e){} showMsg(""); },
-      function(){ showMsg("Can't open stream"); }
+      function(){
+        if (token !== playToken) return;  // a newer play() won; abandon this one
+        try { av.play(); } catch(e){}
+        clearBufferWatchdog();
+        retryCount = 0;
+        showMsg("");
+      },
+      function(){ handleStreamFailure(token); }
     );
-  } catch (e) { showMsg("Open failed"); }
+  } catch (e) {
+    handleStreamFailure(token);           // synchronous open failure => retry
+  }
 }
 
 function cellRect(i) {
@@ -99,6 +206,7 @@ function onKey(ev) {
 }
 
 function exitApp() {
+  resetRetryState();
   closePlayer();
   try { tizen.application.getCurrentApplication().exit(); } catch (e) {}
 }
@@ -134,8 +242,17 @@ window.onload = function () {
   } catch (e) {}
 
   document.addEventListener("keydown", onKey);
-  document.addEventListener("visibilitychange", function(){ if (document.hidden) closePlayer(); });
-  window.addEventListener("beforeunload", closePlayer);
+  // Backgrounded/hidden: stop pending reconnects too, or they fire against a
+  // released decoder when the TV suspends the app.
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) { resetRetryState(); closePlayer(); }
+  });
+  window.addEventListener("beforeunload", function(){ resetRetryState(); closePlayer(); });
+  try {
+    tizen.application.getCurrentApplication().addEventListener("blur", function(){
+      resetRetryState(); closePlayer();
+    });
+  } catch (e) {}
 
   if (!HOST || HOST.indexOf("CHANGE_ME") !== -1) {
     showMsg("Set your restreamer host in app/js/config.js, then rebuild.");

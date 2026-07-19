@@ -1,0 +1,15 @@
+[Unit]
+Description=UniFi cameras HLS staleness watchdog (restarts a stalled mosaic)
+After=camtv-mosaic.service
+Wants=camtv-mosaic.service
+
+[Service]
+# Edit WorkingDirectory/ExecStart to your checkout path.
+WorkingDirectory=/opt/unifi-cameras-on-tizen/restreamer
+ExecStart=/usr/bin/bash /opt/unifi-cameras-on-tizen/restreamer/watchdog.sh
+# Needs root to `systemctl restart camtv-mosaic`.
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

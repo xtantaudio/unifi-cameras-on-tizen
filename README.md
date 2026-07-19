@@ -8,7 +8,8 @@ network — no cloud, no subscription, and **no dependency on Home Assistant** o
 - **Arrow keys** move a highlight; **OK** blows a camera up to fullscreen; **Left/Right** cycle; **Back** returns to the grid
 - Pick **which** cameras, **how many**, and their **order** by editing one config file
 - Works with any camera that exposes **RTSP**
-- **Resilient**: go2rtc auto-reconnects dropped cameras, so a reboot/blip never freezes a tile
+- **Resilient**: go2rtc auto-reconnects dropped cameras, a watchdog restarts the stream if it
+  stalls, and the TV app reconnects itself — a wall display recovers without anyone touching it
 
 ```
   UniFi Protect / any RTSP camera
@@ -86,6 +87,8 @@ Then install the services:
 ```bash
 ./install-macos.sh          # downloads go2rtc, starts now + at boot, auto-restarts on failure
 ```
+This installs three services: the **mosaic** (root LaunchDaemon), the **HLS server** (user
+LaunchAgent), and the **watchdog** (root LaunchDaemon — see [Staying up](#staying-up-unattended)).
 The mosaic runs as a **root LaunchDaemon** — a per-user service gets blocked by macOS "Local
 Network Privacy" from reaching your cameras. On first run macOS may pop a **"allow local network"**
 prompt — click **Allow**.
@@ -172,6 +175,40 @@ that headlessly (no flaky GUI). One-time toolchain + per-TV cert.
 Switching streams shows a brief "Loading…" — the TV's single decoder tears down and rebuilds
 between streams (≈1–2 s). Normal.
 
+## Staying up unattended
+
+A wall display is only useful if it survives things going wrong at 3am without someone
+relaunching an app. Three mechanisms cover three different failures, and they're independent:
+
+| Failure | What handles it |
+|---|---|
+| A camera reboots or drops | **go2rtc** reconnects it; ffmpeg never sees the blip |
+| The restreamer process crashes | `camtv.py` exits if either child dies, so launchd/systemd restarts the whole chain |
+| **ffmpeg freezes without exiting** | the **watchdog** notices and restarts it |
+| The TV loses the stream | the **app** reconnects itself |
+
+That third row is the one that's easy to miss. `KeepAlive`/`Restart=always` only fire when a
+process *exits*. A hung ffmpeg is still running, so the service manager sees a healthy service
+while the picture is frozen — nothing restarts, and it stays that way until a human notices.
+So the watchdog ignores process state and watches the **output** instead: if no stream has
+written a new HLS segment for `STALE_SECS` (default 60), it restarts the mosaic service.
+
+The fourth row matters just as much. Restarting the stream doesn't help if the TV has already
+given up on it — the old behavior was to show "Stream error" and stay dead. The app now retries
+the same URL up to 10 times, 5s apart, showing "Reconnecting…" instead, which comfortably
+outlasts a restart. It also runs a 15s buffering watchdog, because AVPlay's `onerror` doesn't
+reliably fire on a dead stream — it often just hangs in "buffering" forever.
+
+Tuning (environment variables on the watchdog service):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `STALE_SECS` | `60` | No new segment for this long ⇒ stalled |
+| `CHECK_INTERVAL` | `300` | Seconds between checks |
+| `MAX_LOG_MB` | `10` | Rotate logs above this size (`0` disables) |
+
+Watchdog activity is logged to `restreamer/logs/watchdog.log`.
+
 ## Changing cameras later
 
 Edit `restreamer/config.json`, then restart the restreamer:
@@ -184,6 +221,13 @@ Relaunch the app and it picks up the new camera set automatically.
 
 - **App installs but the grid is black / "Stream error":** the app can't reach the restreamer.
   Check `http://<HOST>:8099/config.json` loads from another device, and that `js/config.js` host is right.
+  Note the app now shows **"Reconnecting… (n/10)"** first and only falls back to "Stream error"
+  after ~50s of failed attempts — so a brief message during a restreamer restart is expected, not a fault.
+- **The picture froze and nothing recovered it:** check `restreamer/logs/watchdog.log`. No
+  `STALE` lines means the watchdog isn't running (`launchctl list | grep unifi-cameras` /
+  `systemctl status camtv-watchdog`); `ERROR: kickstart failed` means it's running but can't
+  restart the mosaic — on macOS it must be installed as a **root** LaunchDaemon to act on a
+  system-domain job.
 - **TV rejects the install ("Invalid certificate chain"):** cert expired, or Developer Mode / Host
   PC IP not set. Re-run Part 3.
 - **`sdb connect` refused though the port is open:** the TV's Developer Mode **Host PC IP** isn't set

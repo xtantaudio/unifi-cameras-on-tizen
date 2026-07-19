@@ -14,13 +14,17 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 UID_ME="$(id -u)"
 DAEMON=/Library/LaunchDaemons/com.unifi-cameras.mosaic.plist
 AGENT="$HOME/Library/LaunchAgents/com.unifi-cameras.server.plist"
+# The watchdog restarts the mosaic daemon, which lives in the system domain, so it
+# has to be a root daemon too — a user agent can't kickstart a system job.
+WATCHDOG=/Library/LaunchDaemons/com.unifi-cameras.watchdog.plist
 PY="$(command -v python3)"
 mkdir -p "$HERE/hls" "$HERE/logs" "$HOME/Library/LaunchAgents"
 
 if [ "${1:-}" = "uninstall" ]; then
+  sudo launchctl bootout system/com.unifi-cameras.watchdog 2>/dev/null || true
   sudo launchctl bootout system/com.unifi-cameras.mosaic 2>/dev/null || true
   launchctl bootout "gui/$UID_ME/com.unifi-cameras.server" 2>/dev/null || true
-  sudo rm -f "$DAEMON"; rm -f "$AGENT"
+  sudo rm -f "$DAEMON" "$WATCHDOG"; rm -f "$AGENT"
   echo "Uninstalled."; exit 0
 fi
 
@@ -69,9 +73,29 @@ tee "$AGENT" >/dev/null <<PL
 </dict></plist>
 PL
 
+# --- watchdog: root LaunchDaemon (restarts the mosaic when its output goes stale) ---
+sudo tee "$WATCHDOG" >/dev/null <<PL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.unifi-cameras.watchdog</string>
+  <key>ProgramArguments</key><array>
+    <string>/bin/bash</string><string>$HERE/watchdog.sh</string>
+  </array>
+  <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>$HERE/logs/watchdog.log</string>
+  <key>StandardErrorPath</key><string>$HERE/logs/watchdog.log</string>
+</dict></plist>
+PL
+sudo chown root:wheel "$WATCHDOG"
+chmod +x "$HERE/watchdog.sh" 2>/dev/null || true
+
 sudo launchctl bootout system/com.unifi-cameras.mosaic 2>/dev/null || true
 sudo launchctl bootstrap system "$DAEMON"
 launchctl bootout "gui/$UID_ME/com.unifi-cameras.server" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_ME" "$AGENT"
+sudo launchctl bootout system/com.unifi-cameras.watchdog 2>/dev/null || true
+sudo launchctl bootstrap system "$WATCHDOG"
 echo "Installed. Streams at http://<this-mac-ip>:8099/  (mosaic + cam0..N + config.json)"
 echo "First run: macOS may prompt to allow local-network access — click Allow."

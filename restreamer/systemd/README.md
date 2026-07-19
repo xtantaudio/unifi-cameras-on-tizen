@@ -6,8 +6,11 @@ cd /opt/unifi-cameras-on-tizen/restreamer
 cp config.example.json config.json && nano config.json     # your cameras
 sudo cp systemd/camtv-*.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now camtv-mosaic camtv-server
+sudo systemctl enable --now camtv-mosaic camtv-server camtv-watchdog
 ```
+`camtv-watchdog` restarts the mosaic if its HLS output goes stale — `Restart=always` only
+catches a process that *exits*, not ffmpeg hanging while still alive. It runs as root so it
+can `systemctl restart camtv-mosaic`.
 On Linux there's no Local Network Privacy, so plain services are fine (no root-daemon trick
 needed — though these run system-wide anyway). For hardware encoding on a Raspberry Pi, set
 `"encoder": "h264_v4l2m2m"` in config.json.
